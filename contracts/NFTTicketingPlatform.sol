@@ -1,21 +1,17 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
 
-pragma solidity >=0.8.2 <0.9.0;
-
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+// import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 // Each event issues unique NFT tickets. Users can purchase NFTs as event access tickets.
 
-contract NFTTicketingPlatform is ERC721URIStorage, Ownable {
-    using Counters for Counters.Counter;
-
-    // Counter for total number of events created
-    Counters.Counter private eventCounter;
-
-    // Counter for total number of tickets (NFTs) issued
-    Counters.Counter private ticketCounter;
+contract NFTTicketingPlatform is ERC721, Ownable {
+    // Custom counter variables
+    uint256 private eventIdCounter = 0;
+    uint256 private ticketIdCounter = 0;
+   
 
     // this struct represents a single event
     struct EventDetails {
@@ -33,7 +29,7 @@ contract NFTTicketingPlatform is ERC721URIStorage, Ownable {
     // Mapping of each ticket NFT ID to its associated event ID
     mapping(uint256 => uint256) public ticketToEventMapping;
 
-    constructor() ERC721("EventTicket", "ETIX") {};
+    constructor() ERC721("EventTicket", "ETIX") {}
 
     // Function that allows any user to create an event and become its organizer
     function createNewEvent(
@@ -44,7 +40,7 @@ contract NFTTicketingPlatform is ERC721URIStorage, Ownable {
         require(ticketCost > 0, "Ticket price must be greater than zero");
         require(ticketLimit > 0, "Must offer at least one ticket");
 
-        uint256 newEventId = eventCounter.current();
+        uint256 newEventId = eventIdCounter;
 
         allEvents[newEventId] = EventDetails({
             eventName: name,
@@ -55,30 +51,26 @@ contract NFTTicketingPlatform is ERC721URIStorage, Ownable {
             isTicketSaleActive: true
         });
 
-        eventCounter.increment();
+        eventIdCounter += 1;
     }
 
     // Function that allows a user to purchase a ticket (NFT) for a specific event
 
-    function purchaseTicket(
-        uint256 eventId,
-        string memory metadataURI
-    ) external payable {
+    function purchaseTicket(uint256 eventId) external payable {
         EventDetails storage currentEvent = allEvents[eventId];
 
         require(currentEvent.isTicketSaleActive, "Ticket sales have ended");
         require(currentEvent.ticketsSold < currentEvent.maxTicketCount, "All tickets sold");
         require(msg.value == currentEvent.ticketPrice, "Incorrect ETH amount sent");
 
-        uint256 newTicketId = ticketCounter.current();
+        uint256 newTicketId = ticketIdCounter;
 
         _safeMint(msg.sender, newTicketId);
-        _setTokenURI(newTicketId, metadataURI);
 
         ticketToEventMapping[newTicketId] = eventId;
 
         currentEvent.ticketsSold += 1;
-        ticketCounter.increment();
+        ticketIdCounter += 1;
     }
 
 
@@ -105,12 +97,12 @@ contract NFTTicketingPlatform is ERC721URIStorage, Ownable {
 
     // Read-only function that returns the number of events created so far
     function getTotalEventCount() external view returns (uint256) {
-        return eventCounter.current();
+        return eventIdCounter;
     }
 
     // Read-only function that returns the number of tickets (NFTs) issued so far
     function getTotalTicketCount() external view returns (uint256) {
-        return ticketCounter.current();
+        return ticketIdCounter;
     }
 
     // Read-only returns metadata about a ticket by its tokenId

@@ -12,7 +12,7 @@ describe("NFTTicketingPlatform", function () {
     const ticketing = await TicketingPlatform.connect(organizer).deploy();
     await ticketing.waitForDeployment();
 
-    const ticketPrice = ethers.utils.parseEther("0.05");
+    const ticketPrice = ethers.parseEther("0.05");
 
     return { ticketing, organizer, buyer1, buyer2, buyer3, ticketPrice };
   }
@@ -45,9 +45,7 @@ describe("NFTTicketingPlatform", function () {
 
     await ticketing.createNewEvent("HackFest", ticketPrice, 2);
 
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
 
     expect(await ticketing.ownerOf(0)).to.equal(buyer1.address);
   });
@@ -57,14 +55,14 @@ describe("NFTTicketingPlatform", function () {
 
     await ticketing.createNewEvent(
       "Underpaid Event",
-      ethers.utils.parseEther("1"),
+      ethers.parseEther("1"),
       1
     );
 
     await expect(
       ticketing
         .connect(buyer1)
-        .purchaseTicket(0, "", { value: ethers.utils.parseEther("0.5") })
+        .purchaseTicket(0, { value: ethers.parseEther("0.5") })
     ).to.be.revertedWith("Incorrect ETH amount sent");
   });
 
@@ -74,15 +72,11 @@ describe("NFTTicketingPlatform", function () {
 
     await ticketing.createNewEvent("Limited Event", ticketPrice, 2);
 
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
-    await ticketing
-      .connect(buyer2)
-      .purchaseTicket(0, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
+    await ticketing.connect(buyer2).purchaseTicket(0, { value: ticketPrice });
 
     await expect(
-      ticketing.connect(buyer3).purchaseTicket(0, "", { value: ticketPrice })
+      ticketing.connect(buyer3).purchaseTicket(0, { value: ticketPrice })
     ).to.be.revertedWith("All tickets sold");
   });
 
@@ -116,17 +110,20 @@ describe("NFTTicketingPlatform", function () {
     );
 
     await ticketing.createNewEvent("Paid Entry", ticketPrice, 1);
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
 
     const balanceBefore = await ethers.provider.getBalance(organizer.address);
+
     const withdrawTx = await ticketing.connect(organizer).withdrawEarnings(0);
     const receipt = await withdrawTx.wait();
-    const gasUsed = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+
+    const gasUsed = receipt?.gasUsed?.toBigInt?.() ?? 0n;
+    const gasPrice = receipt?.effectiveGasPrice?.toBigInt?.() ?? 0n;
+    const totalGasCost = gasUsed * gasPrice;
+
     const balanceAfter = await ethers.provider.getBalance(organizer.address);
 
-    expect(balanceAfter).to.be.above(balanceBefore.sub(gasUsed));
+    expect(balanceAfter).to.be.above(balanceBefore - totalGasCost);
   });
 
   it("Should block non-organizers from withdrawing funds", async function () {
@@ -135,9 +132,7 @@ describe("NFTTicketingPlatform", function () {
     );
 
     await ticketing.createNewEvent("Steal Attempt", ticketPrice, 1);
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
 
     await expect(
       ticketing.connect(buyer2).withdrawEarnings(0)
@@ -150,9 +145,7 @@ describe("NFTTicketingPlatform", function () {
     );
 
     await ticketing.createNewEvent("Mapped Event", ticketPrice, 1);
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
 
     const ticketInfo = await ticketing.getTicketEventDetails(0);
     expect(ticketInfo.eventName).to.equal("Mapped Event");
@@ -166,12 +159,8 @@ describe("NFTTicketingPlatform", function () {
     await ticketing.createNewEvent("Event A", ticketPrice, 1);
     await ticketing.createNewEvent("Event B", ticketPrice, 1);
 
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(0, "", { value: ticketPrice });
-    await ticketing
-      .connect(buyer1)
-      .purchaseTicket(1, "", { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(0, { value: ticketPrice });
+    await ticketing.connect(buyer1).purchaseTicket(1, { value: ticketPrice });
 
     expect(await ticketing.getTotalEventCount()).to.equal(2);
     expect(await ticketing.getTotalTicketCount()).to.equal(2);
