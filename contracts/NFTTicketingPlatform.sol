@@ -4,8 +4,9 @@ pragma solidity ^0.8.28;
 // import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-// Each event issues unique NFT tickets. Users can purchase NFTs as event access tickets.
+// Each event issues unique NFT tickets. Users can purchase NFTs as event access tickets using a specified ER20 token.
 
 contract NFTTicketingPlatform is ERC721, Ownable {
     // Custom counter variables
@@ -21,6 +22,7 @@ contract NFTTicketingPlatform is ERC721, Ownable {
         uint256 ticketsSold;
         address payable eventOrganizer;
         bool isTicketSaleActive;
+        IERC20 paymentToken;
     }
 
     // Mapping of event ID to its details
@@ -29,16 +31,35 @@ contract NFTTicketingPlatform is ERC721, Ownable {
     // Mapping of each ticket NFT ID to its associated event ID
     mapping(uint256 => uint256) public ticketToEventMapping;
 
+    event EventCreated(
+        uint256 indexed eventId,
+        string eventName,
+        uint256 ticketPrice,
+        uint256 maxTicketCount,
+        address indexed eventOrganizer,
+        address paymentToken
+    );
+
+    event TicketPurchased(
+        uint256 indexed ticketId,
+        uint256 indexed eventId,
+        address indexed buyer
+    );
+
+    event TicketSalesClosed(uint256 indexed eventId);
+
     constructor() ERC721("EventTicket", "ETIX") {}
 
     // Function that allows any user to create an event and become its organizer
     function createNewEvent(
         string memory name,
         uint256 ticketCost,
-        uint256 ticketLimit
+        uint256 ticketLimit,
+        address paymentTokenAddress
     ) external {
         require(ticketCost > 0, "Ticket price must be greater than zero");
         require(ticketLimit > 0, "Must offer at least one ticket");
+        require(paymentTokenAddress != address(0), "Invalid token address");
 
         uint256 newEventId = eventIdCounter;
 
@@ -48,8 +69,18 @@ contract NFTTicketingPlatform is ERC721, Ownable {
             maxTicketCount: ticketLimit,
             ticketsSold: 0,
             eventOrganizer: payable(msg.sender),
-            isTicketSaleActive: true
+            isTicketSaleActive: true,
+            paymentToken: IERC20(paymentTokenAddress)
         });
+
+        emit EventCreated(
+            newEventId,
+            name,
+            ticketCost,
+            ticketLimit,
+            msg.sender,
+            paymentTokenAddress
+        );
 
         eventIdCounter += 1;
     }
@@ -61,7 +92,7 @@ contract NFTTicketingPlatform is ERC721, Ownable {
 
         require(currentEvent.isTicketSaleActive, "Ticket sales have ended");
         require(currentEvent.ticketsSold < currentEvent.maxTicketCount, "All tickets sold");
-        require(msg.value == currentEvent.ticketPrice, "Incorrect ETH amount sent");
+        require(currentEvent.paymentToken.transferFrom(msg.sender, address(this), currentEvent.ticketPrice), "Token transfer failed");
 
         uint256 newTicketId = ticketIdCounter;
 
@@ -71,6 +102,8 @@ contract NFTTicketingPlatform is ERC721, Ownable {
 
         currentEvent.ticketsSold += 1;
         ticketIdCounter += 1;
+
+        emit TicketPurchased(newTicketId, eventId, msg.sender);
     }
 
 
@@ -80,6 +113,7 @@ contract NFTTicketingPlatform is ERC721, Ownable {
         require(msg.sender == eventInfo.eventOrganizer, "Only the event organizer can close sales");
 
         eventInfo.isTicketSaleActive = false;
+        emit TicketSalesClosed(eventId);
     }
 
     // Function that allow Organizer can withdraw all funds earned from ticket sales
@@ -91,7 +125,10 @@ contract NFTTicketingPlatform is ERC721, Ownable {
 
         eventInfo.ticketsSold = 0;    // Reset tickets sold to prevent re-withdrawal
 
-        (bool success, ) = eventInfo.eventOrganizer.call{value: earnings}("");
+        bool success = eventInfo.paymentToken.transfer(
+            eventInfo.eventOrganizer,
+            earnings
+        );
         require(success, "Withdrawal failed");
     }
 
